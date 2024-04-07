@@ -15,13 +15,15 @@
 
 .App-header {
   background-color: #282c34;
-  min-height: 100vh;
+  height: 100px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  column-gap: 10px;
   align-items: center;
   justify-content: center;
   font-size: calc(10px + 2vmin);
   color: white;
+  
 }
 
 .App-link {
@@ -35,4 +37,17 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+
+.error {
+  color: red;
+}
+
+.loading {
+  color: blue;
+}
+
+.success {
+  color: green;
 }

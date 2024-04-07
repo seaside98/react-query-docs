@@ -1,46 +1,210 @@
-# Getting Started with Create React App
+# React Query Intro
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React (TanStack) Query helps integrate asynchronous network requests into a React frontend. 
 
-## Available Scripts
+It has a lot of features, but the main things I use it for are:
 
-In the project directory, you can run:
+* Handling loading/error states in the UI
+* Refreshing network requests to keep the current view up to date
+* Retrying network requests on failure
+* Caching network responses for the current page session
+* Automatic requests based on user actions, for example loading the next page when they click a button.
 
-### `npm start`
+I have used the React Query cache to fully replace Redux/Rematch in my somewhat simple React apps, but they can also work together.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## Quickstart
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+Once at the top level of the app, you wrap the app with a `QueryClientProvider`, which enables the other hooks to work.
+See `App.tsx`.
 
-### `npm test`
+# useQuery
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+The `useQuery` hook is for fetching (not modifying data), typically GET requests. 
 
-### `npm run build`
+## Handling loading/error states
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+The most common pattern for loading and error states can be found in `Basic.tsx`. I use something like this every single
+time I need to make a network request.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```tsx
+export const Basic = () => {
+  const { isLoading, isError, data } = useQuery({
+    queryKey: ['basic'],
+    queryFn: async () => {
+      const response = await mockNetworkRequest();
+      return response;
+    },
+  });
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+  return (
+    <div>
+      {isLoading ? (
+        <span>Loading.......</span>
+      ) : isError ? (
+        <span>Error loading page</span>
+      ) : (
+        <div>{data?.message}</div>
+      )}
+    </div>
+  );
+};
+```
 
-### `npm run eject`
+We can use `isLoading` and `isError` to determine what state the request is in. 
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+`data` will be populated with whatever the `queryFn` returns.
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+The `queryKey` is a key into the React Query cache, and should be different for each separate query. More on this later!
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+## Refreshing network requests to keep the current view up to date
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+If you only read one part of the documentation it should be this! https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults
 
-## Learn More
+React Query's defaults include reloading logic that might cause bugs if you aren't aware of them. 
+Queries will always be refetched when:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+* The user focusses the page in their browser after leaving the current window or tab (`refetchOnWindowFocus`)
+* The user's network reconnects (`refetchOnReconnect`)
+* A new `useQuery` is mounted (`refetchOnMount`)
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+To disable these, you have to explicitly add the properties as false:
+
+```tsx
+const { isLoading, isError, data } = useQuery({
+  queryKey: ['basic'],
+  queryFn: async () => {
+    const response = await mockNetworkRequest();
+    return response;
+  },
+  refetchOnMount: false,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+});
+```
+
+Alternatively, you can modify the `staleTime` to make refetches happen less often.
+
+## Retrying network requests on failure
+
+See `BasicError.tsx` for an example, and open the console when running the app. 
+React query automatically retries failed requests 3 more times with exponential backoff before showing an error to the user.
+
+## Caching network responses for the current page session
+
+Requests that share the same `queryKey` will share the same data cache, so you should not reuse `queryKey`s in your app unless the data
+is identical.  
+
+## Automatic requests based on user actions
+
+See `UserInput.tsx` for an example of responding to user input. Variables can be passed to the `queryKey` to trigger new network requests as the user
+interacts with the page. In this example, a new request will be made when the user changes the page.
+
+```tsx
+const [page, setPage] = useState(0);
+const { isLoading, isError, data } = useQuery({
+  queryKey: ['userInput', page], // <-- The important bit!
+  queryFn: async () => {
+    const response = await mockPageNetworkRequest(page);
+    return response;
+  },
+});
+```
+
+## Disabling a query
+
+The `enabled` key can be set to false to disable a query, for example when some user input is required before the query should fetch.
+The following example will send a new request each time `input` changes, but only when `input` has a value.
+
+```tsx
+const [input, setInput] = useState('');
+const { isLoading, isError, data } = useQuery({
+  queryKey: ['queryOnlyOnInput', input],
+  queryFn: async () => {
+    const response = await mockNetworkRequest(input);
+    return response;
+  },
+  enabled: input !== '',
+});
+```
+
+## Beware of overwriting user input!
+
+I would say this is definitely the trickiest part of React Query.
+
+In general, you should be wary of changing state in the `queryFn`. This example looks like it would work fine,
+populating `input` with an initial value from a network request, then allowing the user to edit. But if the user
+leaves the page and comes back, the default `refetchOnWindowFocus` will cause a refetch and overwrite the user input.
+
+```tsx
+const [input, setInput] = useState('');
+const { isLoading, isError } = useQuery({
+  queryKey: ['initialValueFetch'],
+  queryFn: async () => {
+    const response = await mockNetworkRequest();
+    setInput(response.value);
+    return response;
+  },
+});
+
+return <input onChange={(e) => setInput(e.target.value)} value={input} />
+```
+
+To fix this, we could add an additional state that disables the query once the user makes a change. I prefer this to disabling
+`refetchOnWindowFocus` etc, because it allows the values to be updated with the default refetch logic before the user starts making changes.
+
+```tsx
+const [input, setInput] = useState('');
+const [dirty, setDirty] = useState(false);
+const { isLoading, isError } = useQuery({
+  queryKey: ['initialValueFetch'],
+  queryFn: async () => {
+    const response = await mockNetworkRequest();
+    setInput(response.value);   
+    return response;
+  },
+  enabled: !dirty
+});
+
+return (
+  <input
+    onChange={(e) => {
+      setInput(e.target.value);
+      setDirty(true);
+    }}
+    value={input}
+  />
+);
+```
+
+# useMutation
+
+The `useMutation` hook is used for submitting modified data (for example DELETE/POST/PUT), where requests are trigger by user
+actions instead of automatically. This type of query does not retry on default. See `mutationBasic.tsx` for an example.
+
+```tsx
+const { isPending, isError, mutate } = useMutation({
+  mutationFn: async () => {
+    await mockNetworkRequest();
+
+    // I typically put the `onSuccess` logic here
+    doSomeSuccess();
+  },
+});
+
+return <button onClick={() => mutate()}>Submit</button>
+```
+
+# useQueryClient
+
+The `useQueryClient` hook can be used to invalidate a cached query and force a refetch. `invalidateQueries` invalidates all keys 
+that start with the prefix, allowing you to bulk invalidate if you structure your keys well.
+
+```tsx
+const queryClient = useQueryClient();
+
+// later...
+const someFn = () => {
+  // For example, this would invalidate the key ['configList', 'page-1']
+  queryClient.invalidateQueries({ queryKey: ['configList'] }); 
+}
+```

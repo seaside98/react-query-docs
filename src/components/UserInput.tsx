@@ -17,8 +17,8 @@ export const UserInput = () => {
       <h1>User Input</h1>
       <h3>Page Number: {page}</h3>
       <div>
-        <button onClick={() => setPage(page + 1)}>Next Page</button>
         <button onClick={() => setPage(page - 1)}>Previous Page</button>
+        <button onClick={() => setPage(page + 1)}>Next Page</button>
       </div>
 
       {isLoading ? (

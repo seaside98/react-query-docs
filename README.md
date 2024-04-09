@@ -208,3 +208,40 @@ const someFn = () => {
   queryClient.invalidateQueries({ queryKey: ['configList'] }); 
 }
 ```
+
+# Reusing queries
+
+If a query needs to be used in multiple places, you should extract it into a custom hook. You could also use this pattern for every
+query if you want the query logic to exist in a separate file from the component.
+
+```tsx
+// query.ts
+// function name should start with "use" to be considered a custom hook in React
+export const useCustomQuery = (page) => {
+  return useQuery({
+    queryKey: ['pagedQuery', page],
+    queryFn: async () => {
+      const response = await mockPageNetworkRequest(page);
+      return response;
+    },
+  });
+}
+
+// Component.tsx
+export const PagedExample = () => {
+  const [page, setPage] = useState(0);
+  const { isLoading, isError, data } = useCustomQuery(page);
+
+  return (
+    <div>
+      {isLoading ? (
+        <span>Loading.......</span>
+      ) : isError ? (
+        <span>Error loading page</span>
+      ) : (
+        <div>{data?.message}</div>
+      )}
+    </div>
+  );
+};
+```
